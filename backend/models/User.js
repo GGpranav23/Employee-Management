@@ -3,19 +3,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const userSchema = new mongoose.Schema({
-  firstName: {
+  name: {
     type: String,
-    required: [true, 'First name is required'],
+    required: [true, 'Name is required'],
     trim: true,
-    maxlength: [50, 'First name cannot be more than 50 characters'],
-    match: [/^[a-zA-Z\s]+$/, 'First name can only contain letters and spaces']
-  },
-  lastName: {
-    type: String,
-    required: [true, 'Last name is required'],
-    trim: true,
-    maxlength: [50, 'Last name cannot be more than 50 characters'],
-    match: [/^[a-zA-Z\s]+$/, 'Last name can only contain letters and spaces']
+    maxlength: [50, 'Name cannot be more than 50 characters'],
+    match: [/^[a-zA-Z\s]+$/, 'Name can only contain letters and spaces']
   },
   email: {
     type: String,
@@ -34,31 +27,14 @@ const userSchema = new mongoose.Schema({
     minlength: [8, 'Password must be at least 8 characters long'],
     select: false // Don't include password in queries by default
   },
-  phoneNumber: {
+  role: {
     type: String,
-    trim: true,
-    match: [/^\+?[\d\s\-\(\)]+$/, 'Please provide a valid phone number']
+    enum: ['Team Lead', 'Employee'],
+    default: 'Employee'
   },
-  dateOfBirth: {
-    type: Date,
-    validate: {
-      validator: function(value) {
-        if (!value) return true; // Optional field
-        const today = new Date();
-        const birthDate = new Date(value);
-        const age = today.getFullYear() - birthDate.getFullYear();
-        return age >= 13 && age <= 120; // Age validation
-      },
-      message: 'Age must be between 13 and 120 years'
-    }
-  },
-  gender: {
-    type: String,
-    enum: ['male', 'female', 'other', 'prefer-not-to-say'],
-    lowercase: true
-  },
-  profilePicture: {
-    type: String,
+  employeeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Employee',
     default: null
   },
   isEmailVerified: {
@@ -95,16 +71,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
-  role: {
-    type: String,
-    enum: ['user', 'admin', 'moderator'],
-    default: 'user'
-  },
   preferences: {
-    newsletter: {
-      type: Boolean,
-      default: false
-    },
     notifications: {
       type: Boolean,
       default: true
@@ -113,6 +80,10 @@ const userSchema = new mongoose.Schema({
       type: String,
       enum: ['light', 'dark', 'auto'],
       default: 'auto'
+    },
+    language: {
+      type: String,
+      default: 'en'
     }
   },
   metadata: {
@@ -121,17 +92,17 @@ const userSchema = new mongoose.Schema({
     registrationSource: {
       type: String,
       default: 'web'
+    },
+    lastLoginIP: String,
+    loginCount: {
+      type: Number,
+      default: 0
     }
   }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
-});
-
-// Virtual for full name
-userSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName}`;
 });
 
 // Virtual for account lock status
@@ -141,8 +112,9 @@ userSchema.virtual('isLocked').get(function() {
 
 // Indexes for performance
 userSchema.index({ email: 1 });
-userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
+userSchema.index({ createdAt: -1 });
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {
@@ -170,7 +142,8 @@ userSchema.methods.getSignedJwtToken = function() {
     { 
       id: this._id,
       email: this.email,
-      role: this.role
+      role: this.role,
+      employeeId: this.employeeId
     },
     process.env.JWT_SECRET,
     {
